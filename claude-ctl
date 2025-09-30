@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""
+Claude Code Power Manager - CLI Control Interface
+Manage and monitor Claude Code sessions
+"""
+
+import sys
+import os
+import json
+import argparse
+import time
+from pathlib import Path
+from typing import List, Dict
+from datetime import datetime
+
+# Add lib directory to path
+sys.path.insert(0, str(Path(__file__).parent / 'lib'))
+
+try:
+    from thermal_monitor import ThermalMonitor
+    from session_manager import SessionManager, Priority
+    import yaml
+except ImportError as e:
+    print(f"Error importing modules: {e}", file=sys.stderr)
+    print("Make sure you're running from the claude-power-manager directory", file=sys.stderr)
+    sys.exit(1)
+
+
+class ClaudeCtl:
+    """CLI interface for Claude Code Power Manager"""
+
+    def __init__(self):
+        self.config_path = Path(__file__).parent / 'config' / 'default.yaml'
+        self.config = self._load_config()
+        self.thermal_monitor = ThermalMonitor(self.config.get('thermal', {}))
+        self.session_manager = SessionManager(
+            self.config.get('sessions', {}),
+            self.thermal_monitor
+        )
+
+    def _load_config(self) -> Dict:
+        """Load configuration"""
+        try:
+            with open(self.config_path, 'r') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            print(f"Error loading config: {e}", file=sys.stderr)
+            return {}
+
+    def status(self):
+        """Show system status"""
+        print("=" * 70)
+        print("Claude Code Power Manager - System Status")
+        print("=" * 70)
+
+        # Thermal state
+        thermal_state = self.thermal_monitor.get_thermal_state()
+        thermal_level = self.thermal_monitor.get_thermal_level()
+
+        print(f"\n📊 Thermal Status")
+        print(f"  Temperature:     {thermal_state.cpu_temp:.1f}°C")
+        print(f"  Level:           {thermal_level.upper()}")
+        print(f"  CPU Frequency:   {thermal_state.cpu_freq:.0f} MHz")
+        print(f"  Load Average:    {thermal_state.load_avg[0]:.2f}, {thermal_state.load_avg[1]:.2f}, {thermal_state.load_avg[2]:.2f}")
+        print(f"  Throttled:       {'Yes' if thermal_state.throttled else 'No'}")
+
+        # Session stats
+        stats = self.session_manager.get_session_stats()
+
+        print(f"\n🔧 Session Statistics")
+        print(f"  Total Sessions:  {stats['total']}")
+        print(f"  Running:         {stats['running']}")
+        print(f"  Queued:          {stats['queued']}")
+        print(f"  Paused:          {stats['paused']}")
+        print(f"  Completed:       {stats['completed']}")
+        print(f"  Failed:          {stats['failed']}")
+
+        print(f"\n💻 Resource Usage")
+        print(f"  Total CPU:       {stats['total_cpu']:.1f}%")
+        print(f"  Total Memory:    {stats['total_memory_mb']:.0f} MB")
+
+        # Recommendations
+        can_spawn = self.thermal_monitor.can_spawn_instance()
+        max_instances = self.thermal_monitor.get_max_instances()
+
+        print(f"\n💡 Recommendations")
+        print(f"  Can spawn new:   {'Yes' if can_spawn else 'No'}")
+        print(f"  Max instances:   {max_instances}")
+        print(f"  Advice:          {self.thermal_monitor.get_cooling_recommendation()}")
+
+        print()
+
+    def list_sessions(self, status_filter: str = None):
+        """List all sessions"""
+        sessions = list(self.session_manager.sessions.values())
+
+        if status_filter:
+            sessions = [s for s in sessions if s.status == status_filter]
+
+        if not sessions:
+            print(f"No sessions found{' with status: ' + status_filter if status_filter else ''}")
+            return
+
+        print("\n" + "=" * 120)
+        print(f"{'Session ID':<20} {'Status':<12} {'Priority':<12} {'CPU%':<8} {'Mem(MB)':<10} {'Age':<15} {'Command':<30}")
+        print("=" * 120)
+
+        for session in sorted(sessions, key=lambda s: s.created_at, reverse=True):
+            age = time.time() - session.created_at
+            age_str = f"{int(age//3600)}h{int((age%3600)//60)}m" if age >= 3600 else f"{int(age//60)}m{int(age%60)}s"
+
+            priority_name = Priority(session.priority).name
+            command_short = session.command[:30] + "..." if len(session.command) > 30 else session.command
+
+            print(f"{session.session_id:<20} {session.status:<12} {priority_name:<12} "
+                  f"{session.cpu_usage:<8.1f} {session.memory_mb:<10.0f} {age_str:<15} {command_short:<30}")
+
+        print()
+
+    def create_session(self, command: str, priority: str = 'normal', working_dir: str = None):
+        """Create a new session"""
+        priority_map = {
+            'critical': Priority.CRITICAL,
+            'high': Priority.HIGH,
+            'normal': Priority.NORMAL,
+            'low': Priority.LOW,
+            'background': Priority.BACKGROUND
+        }
+
+        if priority not in priority_map:
+            print(f"Error: Invalid priority '{priority}'. Use: critical, high, normal, low, background")
+            return
+
+        if not working_dir:
+            working_dir = os.getcwd()
+
+        session_id = self.session_manager.create_session(
+            command=command,
+            working_dir=working_dir,
+            priority=priority_map[priority]
+        )
+
+        print(f"✓ Created session: {session_id}")
+        print(f"  Command:   {command}")
+        print(f"  Priority:  {priority}")
+        print(f"  Directory: {working_dir}")
+
+        # Try to start immediately if possible
+        if self.thermal_monitor.can_spawn_instance():
+            if self.session_manager.start_session(session_id):
+                print(f"  Status:    Started immediately")
+            else:
+                print(f"  Status:    Queued (will start when resources available)")
+        else:
+            print(f"  Status:    Queued (thermal constraints)")
+
+    def stop_session(self, session_id: str, force: bool = False):
+        """Stop a session"""
+        if self.session_manager.stop_session(session_id, force=force):
+            print(f"✓ Stopped session: {session_id}")
+        else:
+            print(f"✗ Failed to stop session: {session_id}")
+
+    def pause_session(self, session_id: str):
+        """Pause a session"""
+        if self.session_manager.pause_session(session_id):
+            print(f"✓ Paused session: {session_id}")
+        else:
+            print(f"✗ Failed to pause session: {session_id}")
+
+    def resume_session(self, session_id: str):
+        """Resume a session"""
+        if self.session_manager.resume_session(session_id):
+            print(f"✓ Resumed session: {session_id}")
+        else:
+            print(f"✗ Failed to resume session: {session_id}")
+
+    def cleanup(self):
+        """Clean up completed and idle sessions"""
+        before = len(self.session_manager.sessions)
+        self.session_manager.cleanup_idle_sessions()
+        after = len(self.session_manager.sessions)
+        removed = before - after
+        print(f"✓ Cleaned up {removed} session(s)")
+
+    def thermal_info(self):
+        """Show detailed thermal information"""
+        print("=" * 70)
+        print("Thermal Information")
+        print("=" * 70)
+
+        state = self.thermal_monitor.get_thermal_state()
+        level = self.thermal_monitor.get_thermal_level()
+
+        print(f"\nCurrent State:")
+        print(f"  Temperature:     {state.cpu_temp:.1f}°C")
+        print(f"  Level:           {level.upper()}")
+        print(f"  Throttled:       {state.throttled}")
+
+        print(f"\nThresholds:")
+        print(f"  Critical:        {self.thermal_monitor.temp_critical}°C")
+        print(f"  High:            {self.thermal_monitor.temp_high}°C")
+        print(f"  Normal:          {self.thermal_monitor.temp_normal}°C")
+        print(f"  Cool:            {self.thermal_monitor.temp_cool}°C")
+
+        print(f"\nRecommendation:")
+        print(f"  {self.thermal_monitor.get_cooling_recommendation()}")
+        print()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Claude Code Power Manager CLI',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  claude-ctl status                                  # Show system status
+  claude-ctl list                                    # List all sessions
+  claude-ctl create "claude-code --task build"       # Create new session
+  claude-ctl create "long-task" --priority low       # Create low-priority session
+  claude-ctl stop session-id                         # Stop a session
+  claude-ctl pause session-id                        # Pause a session
+  claude-ctl resume session-id                       # Resume a session
+  claude-ctl cleanup                                 # Clean up old sessions
+  claude-ctl thermal                                 # Show thermal info
+        """
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # Status command
+    subparsers.add_parser('status', help='Show system status')
+
+    # List command
+    list_parser = subparsers.add_parser('list', help='List sessions')
+    list_parser.add_argument('--status', choices=['queued', 'running', 'paused', 'completed', 'failed'],
+                            help='Filter by status')
+
+    # Create command
+    create_parser = subparsers.add_parser('create', help='Create new session')
+    create_parser.add_argument('command', help='Command to execute')
+    create_parser.add_argument('--priority', default='normal',
+                              choices=['critical', 'high', 'normal', 'low', 'background'],
+                              help='Session priority')
+    create_parser.add_argument('--dir', help='Working directory')
+
+    # Stop command
+    stop_parser = subparsers.add_parser('stop', help='Stop a session')
+    stop_parser.add_argument('session_id', help='Session ID to stop')
+    stop_parser.add_argument('--force', action='store_true', help='Force kill session')
+
+    # Pause command
+    pause_parser = subparsers.add_parser('pause', help='Pause a session')
+    pause_parser.add_argument('session_id', help='Session ID to pause')
+
+    # Resume command
+    resume_parser = subparsers.add_parser('resume', help='Resume a session')
+    resume_parser.add_argument('session_id', help='Session ID to resume')
+
+    # Cleanup command
+    subparsers.add_parser('cleanup', help='Clean up completed/idle sessions')
+
+    # Thermal command
+    subparsers.add_parser('thermal', help='Show thermal information')
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    ctl = ClaudeCtl()
+
+    try:
+        if args.command == 'status':
+            ctl.status()
+        elif args.command == 'list':
+            ctl.list_sessions(args.status)
+        elif args.command == 'create':
+            ctl.create_session(args.command, args.priority, args.dir)
+        elif args.command == 'stop':
+            ctl.stop_session(args.session_id, args.force)
+        elif args.command == 'pause':
+            ctl.pause_session(args.session_id)
+        elif args.command == 'resume':
+            ctl.resume_session(args.session_id)
+        elif args.command == 'cleanup':
+            ctl.cleanup()
+        elif args.command == 'thermal':
+            ctl.thermal_info()
+    except KeyboardInterrupt:
+        print("\nInterrupted")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,22 @@
+# Claude Code Power Manager - Python Dependencies
+# Install with: pip3 install --user -r requirements.txt
+
+# Core dependencies
+psutil>=5.9.0          # Process and system utilities
+PyYAML>=6.0           # YAML configuration parsing
+
+# Optional dependencies for enhanced features
+# Uncomment to enable
+
+# Desktop notifications
+# notify2>=0.3
+
+# Advanced monitoring
+# prometheus-client>=0.16.0
+
+# Email notifications
+# secure-smtplib>=0.1.1
+
+# Dashboard/Web UI (future)
+# flask>=2.3.0
+# flask-socketio>=5.3.0

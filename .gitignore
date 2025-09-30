@@ -1,0 +1,90 @@
+# Secrets and sensitive data
+config/secrets.yaml
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/*.log
+*.log
+
+# State files (may contain session data)
+*.json
+state/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# PID files
+*.pid
+
+# Session recordings/screenshots
+screenshots/
+recordings/
+
+# Credentials
+credentials.json
+token.json
+auth.json
+
+# SSH keys
+id_rsa
+id_ed25519
+*.ppk

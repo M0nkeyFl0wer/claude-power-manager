@@ -1,0 +1,36 @@
+[Unit]
+Description=Claude Code Power Management Daemon
+Documentation=file:///home/monkeyflower/claude-power-manager/README.md
+After=network.target multi-user.target
+
+[Service]
+Type=simple
+User=monkeyflower
+Group=monkeyflower
+WorkingDirectory=/home/monkeyflower/claude-power-manager
+
+# Main process
+ExecStart=/usr/bin/python3 /home/monkeyflower/claude-power-manager/claude-power-daemon.py -c config/default.yaml
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-power-mgr
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits (optional)
+# MemoryLimit=500M
+# CPUQuota=20%
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target

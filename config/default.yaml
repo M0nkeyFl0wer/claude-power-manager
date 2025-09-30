@@ -1,0 +1,105 @@
+# Claude Code Power Manager - Default Configuration
+# This file contains NO secrets - safe to commit to git
+
+# Thermal Management Settings
+thermal:
+  # Temperature thresholds (Celsius)
+  temp_critical: 85    # Emergency stop - pause all non-critical sessions
+  temp_high: 80        # Reduce concurrent instances
+  temp_normal: 70      # Normal operation
+  temp_cool: 60        # Optimal - can run max instances
+
+  # Monitoring interval
+  check_interval: 10   # seconds
+
+# Session Management Settings
+sessions:
+  # Resource limits (for 8GB system)
+  max_memory_mb: 6000           # Max total memory for all Claude sessions
+  max_cpu_percent: 80           # Max total CPU usage across all sessions
+  idle_timeout: 3600            # Kill idle sessions after 1 hour
+  max_concurrent: 4             # Maximum concurrent sessions (overridden by thermal state)
+
+  # Session priority defaults
+  default_priority: 2           # 0=CRITICAL, 1=HIGH, 2=NORMAL, 3=LOW, 4=BACKGROUND
+
+# Power Profiles
+profiles:
+  # Battery mode - conservative
+  battery:
+    max_concurrent: 2
+    max_memory_mb: 4000
+    max_cpu_percent: 60
+    temp_high: 75
+    enable_turbo: false
+    cpu_governor: "powersave"
+
+  # Plugged in - balanced
+  plugged:
+    max_concurrent: 3
+    max_memory_mb: 6000
+    max_cpu_percent: 80
+    temp_high: 80
+    enable_turbo: true
+    cpu_governor: "ondemand"
+
+  # Performance - aggressive (user requested not to over-throttle)
+  performance:
+    max_concurrent: 4
+    max_memory_mb: 6500
+    max_cpu_percent: 90
+    temp_high: 82
+    enable_turbo: true
+    cpu_governor: "performance"
+
+# Logging Configuration
+logging:
+  # NO SECRETS HERE - just log paths
+  log_dir: "/home/monkeyflower/claude-power-manager/logs"
+  log_level: "INFO"              # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  max_log_size_mb: 50
+  backup_count: 5
+
+  # Action reporting (user requested awareness of actions taken)
+  report_actions: true           # Log all throttling/scaling decisions
+  report_to_console: true        # Print important actions to stdout
+  report_thermal_changes: true   # Report thermal state changes
+
+# Monitoring Dashboard
+monitoring:
+  enable_dashboard: true
+  dashboard_port: 8765
+  update_interval: 5             # seconds
+  retention_hours: 24            # Keep metrics for 24 hours
+
+# Safety Features
+safety:
+  enable_emergency_stop: true    # Stop all sessions if temp > critical
+  enable_auto_pause: true        # Pause low-priority sessions when temp high
+  enable_cleanup: true           # Auto-cleanup completed/idle sessions
+  min_free_memory_mb: 500        # Minimum free memory to maintain
+
+# System Integration
+system:
+  # State persistence
+  state_file: "/tmp/claude-power-manager-state.json"
+
+  # System76 Power integration (for Pop!_OS)
+  use_system76_power: true
+
+  # CPU frequency scaling
+  enable_cpu_governor: false     # Requires root - set manually if needed
+
+  # Process detection
+  claude_process_patterns:
+    - "claude-code"
+    - "claude_code"
+    - "claude"
+
+# Notification Settings (no secrets)
+notifications:
+  enable_desktop: true           # Show desktop notifications for important events
+  enable_email: false            # Email notifications (configure in secrets.yaml)
+  notify_on_thermal_high: true
+  notify_on_thermal_critical: true
+  notify_on_session_failed: true
