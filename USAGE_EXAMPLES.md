@@ -6,7 +6,8 @@ Practical examples for using Claude Code Power Manager in real-world scenarios.
 
 ### 1. Install and Setup
 ```bash
-cd /home/monkeyflower/claude-power-manager
+mkdir /home/claude-power-manager
+cd /home/claude-power-manager
 ./install.sh
 ```
 
